@@ -1,0 +1,18 @@
+# ACL de Mosquitto para qr-announcer
+#
+# Reglas:
+#  - El backend "announcer" puede publicar/suscribirse a TODO speakers/#
+#  - Cada speaker spkr-XXXX solo puede publicar/suscribir a su propio prefix
+#
+# Para agregar un speaker nuevo: agregar bloque "user spkr-XXXX" con sus topics
+
+# === Backend (el publisher del sistema) ===
+user announcer
+topic readwrite speakers/#
+topic readwrite $SYS/#
+
+# === Speakers ===
+# Speaker 001
+user spkr-001
+topic read speakers/spkr-001/cmd
+topic write speakers/spkr-001/status
