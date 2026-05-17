@@ -29,10 +29,7 @@ await fs.mkdir(AUDIO_DIR, { recursive: true });
 await fs.mkdir(FW_DIR, { recursive: true });
 
 const app = Fastify({
-  logger: {
-    level: 'info',
-    transport: { target: 'pino-pretty', options: { colorize: false } },
-  },
+  logger: { level: 'info' },
   bodyLimit: 5 * 1024 * 1024, // 5 MB
 });
 
