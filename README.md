@@ -1,66 +1,48 @@
-# Mosquitto para qr-announcer en Railway
+# qr-speaker-infra
 
-Broker MQTT con autenticacion username/password. Sin TLS (MQTT plano puerto 1883).
-Para produccion seria, agregar TLS termination (ver seccion al final).
+Infraestructura del sistema de anuncio de pagos QR por voz.
 
-## Como deployar
+## Servicios
 
-1. **Push** este directorio completo a un repo de GitHub.
-2. En Railway: **New Project** -> **Deploy from GitHub repo** -> elegir el repo.
-3. Railway detecta el `Dockerfile` automaticamente. Si esta en subcarpeta, en
-   Settings -> **Root Directory** poner `qr-announcer/mosquitto`.
-4. En **Variables** del servicio, agregar:
-   - `ANNOUNCER_PASSWORD` = una password fuerte (>= 24 chars). Ejemplo:
-     `openssl rand -base64 24`
-   - `SPEAKER_001_PASSWORD` = otra password fuerte distinta
-5. En **Settings -> Networking** clickear **Generate Domain** > **TCP Proxy**.
-   Railway te asigna un host:port publico, algo tipo
-   `tramway.proxy.rlwy.net:34521`. Anotalo, lo usamos en el speaker.
-6. Deploy. El log deberia decir `[entrypoint] passwd_file generado...` y luego
-   `mosquitto version 2.0.x running`.
+| Carpeta | Servicio | Que hace |
+|---------|----------|----------|
+| [mosquitto-svc/](mosquitto-svc/) | MQTT Broker | Recibe comandos del backend y los entrega a los speakers via 4G |
+| [file-server/](file-server/) | HTTP File Server | Sirve `.bin` de audios y firmware OTA a los speakers |
 
-## Como probar desde tu PC
+## Como deployar en Railway
 
-Instalar mosquitto client (Windows: `winget install EclipseFoundation.Mosquitto`).
+Ambos servicios viven en el mismo Railway project pero son **servicios separados**:
 
-```bash
-# Suscribirse al topic del speaker (deberia mostrar getinfo cuando el speaker se conecte)
-mosquitto_sub -h tramway.proxy.rlwy.net -p 34521 \
-  -u announcer -P $ANNOUNCER_PASSWORD \
-  -t 'speakers/+/status' -v
+### Servicio mosquitto (ya existe)
 
-# En otra terminal, publicar comando voice
-mosquitto_pub -h tramway.proxy.rlwy.net -p 34521 \
-  -u announcer -P $ANNOUNCER_PASSWORD \
-  -t 'speakers/spkr-001/cmd' \
-  -m '{"cmd":"voice","playAudibleMsg":"037-038-039"}'
+- En Railway: el servicio actual "mosquito"
+- Settings -> **Root Directory**: cambiar a `mosquitto-svc`
+- Vars:
+  - `ANNOUNCER_PASSWORD`
+  - `SPEAKER_001_PASSWORD`
+- Networking: TCP Proxy -> port 1883 -> ya expuesto en `maglev.proxy.rlwy.net:36922`
+
+### Servicio file-server (nuevo)
+
+- Railway: New Service -> Deploy from GitHub repo -> mismo repo `mosquito`
+- Settings -> **Root Directory**: `file-server`
+- Settings -> **Volumes**: nuevo volume montado en `/data`
+- Vars:
+  - `UPLOAD_TOKEN` = un secreto (`openssl rand -hex 32`)
+  - `STORAGE_PATH` = `/data`
+- Networking: **Public HTTP** (no TCP) -> port 8080
+
+Despues de deployar, el endpoint queda algo tipo
+`https://qr-speaker-fileserver-production.up.railway.app/v1/audio/spkr-001.bin`
+
+## Flujo de OTA de audios
+
 ```
-
-## Como agregar mas speakers
-
-1. Editar `acl`, agregar bloque:
-   ```
-   user spkr-NNN
-   topic read speakers/spkr-NNN/cmd
-   topic write speakers/spkr-NNN/status
-   ```
-2. Editar `entrypoint.sh`, agregar:
-   ```sh
-   mosquitto_passwd -b "$PASSWD_FILE" spkr-NNN "$SPEAKER_NNN_PASSWORD"
-   ```
-3. En Railway, agregar env var `SPEAKER_NNN_PASSWORD`.
-4. Redeploy.
-
-(Esto lo automatizamos despues con el panel admin.)
-
-## Migrar a TLS (cuando el speaker funcione end-to-end)
-
-3 opciones:
-- **Caddy sidecar:** un container Caddy delante de Mosquitto, terminacion TLS con
-  cert auto-renovado por Let's Encrypt. Requiere dominio propio apuntando al
-  Railway TCP proxy via CNAME.
-- **Cert self-signed dentro del container:** mas simple pero el speaker debe
-  aceptar self-signed (muchos firmwares chinos lo hacen).
-- **Stunnel sidecar:** similar a Caddy pero mas viejo y especifico para TCP.
-
-Ver `mosquitto.conf.tls.example` cuando se implemente.
+1. Generamos pack de WAVs espanol colombiano (audio-pack/)
+2. Empaquetamos con cloudspeaker_tools -> minifs_rom_v2.bin
+3. POST al file-server con bearer token -> /v1/audio/spkr-001.bin
+4. MQTT publish a speakers/spkr-001/cmd:
+   {"cmd":"fvoice", "url":"http://...railway.app/v1/audio/spkr-001.bin", "port":80}
+5. Speaker descarga via 4G, flashea, reinicia
+6. Speaker dice los audios nuevos
+```
