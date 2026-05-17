@@ -1,0 +1,58 @@
+PRUEBA END-TO-END DEL SISTEMA
+
+Una vez que hayas hecho onboarding en localhost:3000, manda este email
+DESDE TU PROPIO GMAIL hacia TU PROPIO GMAIL (te lo enviás a vos mismo).
+
+Importante: el backend solo procesa emails que entran al INBOX nuevos
+tras el IDLE. Mandatelo y va a llegar en segundos.
+
+============================================
+EMAIL DE PRUEBA #1: BANCOLOMBIA
+============================================
+
+De: tu-email@gmail.com (o cualquiera)
+Para: tu-email@gmail.com
+Asunto: Bancolombia te informa
+Cuerpo:
+
+Hola! Recibiste una transferencia por $5.000 de PEDRO PEREZ.
+Tu cuenta de ahorros termina en *1234.
+Fecha: hoy
+
+============================================
+EMAIL DE PRUEBA #2: NEQUI
+============================================
+
+Asunto: Te enviaron plata por Nequi
+Cuerpo:
+
+Hola! Maria te envio $10.000 por Nequi.
+
+============================================
+EMAIL DE PRUEBA #3: monto raro (concatenado)
+============================================
+
+Asunto: Bancolombia te informa
+Cuerpo:
+
+Recibiste una transferencia por $7.823 de JUAN.
+
+============================================
+NOTAS
+============================================
+
+- Como el backend usa ALLOWED_SENDERS=vacio, acepta CUALQUIER remitente
+  con tal de que el body matchee algun parser. Para produccion habria
+  que restringir a alertasynotificaciones@notificacionesbancolombia.com etc.
+
+- El parser detecta:
+  * Bancolombia: si el subject o body contiene "bancolombia"
+  * Nequi:       si el subject o body contiene "nequi"
+  * Daviplata:   si el subject o body contiene "daviplata"
+  * Davivienda:  si from contiene "@davivienda.com"
+
+- Si todo funciona, el speaker va a anunciar:
+  Test 1: "Recibiste cinco mil pesos de Bancolombia" (frase larga, fluido)
+  Test 2: "Recibiste diez mil pesos de Nequi" (frase larga, fluido)
+  Test 3: "Recibiste siete mil ochocientos veintitres pesos de Bancolombia"
+          (concatenado, menos fluido pero entendible)

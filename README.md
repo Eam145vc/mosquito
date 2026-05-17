@@ -1,48 +1,75 @@
 # qr-speaker-infra
 
-Infraestructura del sistema de anuncio de pagos QR por voz.
+Sistema completo de anuncio de pagos QR por voz para Colombia.
+Lee notificaciones de bancos por Gmail (OAuth2), parsea monto + banco, y anuncia
+por MQTT al speaker IoT del local del cliente.
 
 ## Servicios
 
-| Carpeta | Servicio | Que hace |
-|---------|----------|----------|
-| [mosquitto-svc/](mosquitto-svc/) | MQTT Broker | Recibe comandos del backend y los entrega a los speakers via 4G |
-| [file-server/](file-server/) | HTTP File Server | Sirve `.bin` de audios y firmware OTA a los speakers |
+| Carpeta | Servicio Railway | Que hace |
+|---------|------------------|----------|
+| [mosquitto-svc/](mosquitto-svc/) | **mosquito** | MQTT Broker (Mosquitto 2.0) entre backend y speakers |
+| [file-server/](file-server/) | **file-server** | HTTP server que sirve `.bin` de audios para OTA via fvoice |
+| [backend/](backend/) | **backend** | OAuth2 Gmail + IMAP/Pub/Sub watcher + parsers banco + MQTT publisher |
 
-## Como deployar en Railway
+## Deploy en Railway (un proyecto, tres servicios)
 
-Ambos servicios viven en el mismo Railway project pero son **servicios separados**:
+Cada servicio es un Railway Service en el mismo proyecto. Cada uno apunta al
+mismo repo pero con `Root Directory` distinto (en Settings -> Source).
 
-### Servicio mosquitto (ya existe)
+### 1. mosquitto-svc (broker MQTT)
 
-- En Railway: el servicio actual "mosquito"
-- Settings -> **Root Directory**: cambiar a `mosquitto-svc`
-- Vars:
-  - `ANNOUNCER_PASSWORD`
-  - `SPEAKER_001_PASSWORD`
-- Networking: TCP Proxy -> port 1883 -> ya expuesto en `maglev.proxy.rlwy.net:36922`
+- Root Directory: `mosquitto-svc`
+- Variables: `ANNOUNCER_PASSWORD`, `SPEAKER_001_PASSWORD`
+- Networking: TCP Proxy en port 1883
+- Ya online en `maglev.proxy.rlwy.net:36922`
 
-### Servicio file-server (nuevo)
+### 2. file-server (OTA de audios)
 
-- Railway: New Service -> Deploy from GitHub repo -> mismo repo `mosquito`
-- Settings -> **Root Directory**: `file-server`
-- Settings -> **Volumes**: nuevo volume montado en `/data`
-- Vars:
-  - `UPLOAD_TOKEN` = un secreto (`openssl rand -hex 32`)
-  - `STORAGE_PATH` = `/data`
-- Networking: **Public HTTP** (no TCP) -> port 8080
+- Root Directory: `file-server`
+- Variables: `UPLOAD_TOKEN`, `STORAGE_PATH=/data`
+- Volume montado en `/data`
+- HTTP Public + TCP Proxy (puerto 8080)
+- Ya online
 
-Despues de deployar, el endpoint queda algo tipo
-`https://qr-speaker-fileserver-production.up.railway.app/v1/audio/spkr-001.bin`
+### 3. backend (Gmail watcher + MQTT publisher)
 
-## Flujo de OTA de audios
+- Root Directory: `backend`
+- Variables: ver `backend/.env.example`
+- Volume montado en `/app/_data` (para la SQLite)
+- HTTP Public (necesita HTTPS publico para OAuth callback + Pub/Sub webhook)
+- Documentacion completa en [backend/README.md](backend/README.md) y
+  [backend/GMAIL_OAUTH_SETUP.md](backend/GMAIL_OAUTH_SETUP.md)
+
+## Flujo completo
 
 ```
-1. Generamos pack de WAVs espanol colombiano (audio-pack/)
-2. Empaquetamos con cloudspeaker_tools -> minifs_rom_v2.bin
-3. POST al file-server con bearer token -> /v1/audio/spkr-001.bin
-4. MQTT publish a speakers/spkr-001/cmd:
-   {"cmd":"fvoice", "url":"http://...railway.app/v1/audio/spkr-001.bin", "port":80}
-5. Speaker descarga via 4G, flashea, reinicia
-6. Speaker dice los audios nuevos
+Banco/Billetera (Bancolombia/Nequi/Daviplata/...)
+        |
+        v  notificacion por mail
+Gmail del cliente
+        |
+        v  Gmail API + Pub/Sub push (latencia <3s)
+        v  o IMAP IDLE + poll 3s (fallback)
+backend/src/imap-watcher.js  +  backend/src/pubsub-handler.js
+        |
+        v  parsers/bancolombia, nequi, daviplata, davivienda, generic
+backend/src/amount-to-wavs.js  (numero -> secuencia de IDs WAV)
+        |
+        v  MQTT publish
+mosquitto-svc (Mosquitto en Railway)
+        |
+        v  4G LTE-M
+Speaker IoT en el local
+        |
+        v  reproduce
+"Recibiste cinco mil pesos de Bancolombia"  (espanol colombiano)
 ```
+
+## Onboarding de un cliente
+
+1. Vos le mandas el magic link: `https://backend.up.railway.app/onboard?client=DonJuan`
+2. Cliente acepta consent screen de Google (tilda checkbox de Gmail)
+3. Backend recibe `code`, intercambia por `refresh_token`, lo guarda cifrado AES-256
+4. Backend llama `users.watch()` para suscribir su INBOX al topic Pub/Sub
+5. A partir de ese momento, cualquier email de banco se anuncia en su speaker en <3s
