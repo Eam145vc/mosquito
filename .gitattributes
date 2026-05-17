@@ -1,0 +1,6 @@
+* text=auto eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+mosquitto.conf text eol=lf
+acl text eol=lf
+passwd text eol=lf
