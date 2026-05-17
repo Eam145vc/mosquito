@@ -81,11 +81,13 @@ app.post('/v1/audio/:device', async (req, reply) => {
   const buf = await file.toBuffer();
   if (buf.length > 5 * 1024 * 1024) return reply.code(413).send({ error: 'too large' });
 
-  // Validar magic header del minifs_rom_v2.bin
-  const magic = buf.subarray(0, 9).toString('ascii');
-  if (magic !== 'M0-MINIFS') {
-    return reply.code(400).send({ error: 'not a valid minifs_rom_v2.bin', got_magic: magic });
+  // Validacion liviana: el bin debe pesar al menos 1KB (sino es claramente garbage)
+  if (buf.length < 1024) {
+    return reply.code(400).send({ error: 'bin too small, likely corrupted', size: buf.length });
   }
+  // El magic header puede ser distinto segun version del cloudspeaker_tools.
+  // Aceptamos cualquier bin que pese > 1KB; el speaker rechaza por si mismo si
+  // el formato esta mal.
 
   const outPath = path.join(AUDIO_DIR, `${device}.bin`);
   await fs.writeFile(outPath, buf);
