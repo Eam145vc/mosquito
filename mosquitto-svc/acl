@@ -12,7 +12,12 @@ topic readwrite speakers/#
 topic readwrite $SYS/#
 
 # === Speakers ===
-# Speaker 001
+# Speaker 001 (4G - prototipo, IMEI 860935072096494)
 user spkr-001
 topic read speakers/spkr-001/cmd
 topic write speakers/spkr-001/status
+
+# Speaker 002 (WiFi - primer lote, MAC 489D245570EC)
+user spkr-002
+topic read speakers/spkr-002/cmd
+topic write speakers/spkr-002/status

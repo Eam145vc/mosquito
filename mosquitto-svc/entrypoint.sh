@@ -4,10 +4,10 @@
 #
 # Env vars esperadas (configuralas en el dashboard de Railway):
 #   ANNOUNCER_PASSWORD     -> password del backend
-#   SPEAKER_001_PASSWORD   -> password del primer speaker
+#   SPEAKER_001_PASSWORD   -> password del primer speaker (4G prototipo)
+#   SPEAKER_002_PASSWORD   -> password del segundo speaker (WiFi primer lote)
 #
-# Para agregar mas speakers: definir SPEAKER_NNN_PASSWORD aca y SPEAKER_NNN_USER
-# en el ACL.
+# Para agregar mas speakers: agregar SPEAKER_NNN_PASSWORD env + bloque user en el ACL.
 
 set -e
 
@@ -29,9 +29,17 @@ fi
 mosquitto_passwd -b "$PASSWD_FILE" announcer "$ANNOUNCER_PASSWORD"
 mosquitto_passwd -b "$PASSWD_FILE" spkr-001 "$SPEAKER_001_PASSWORD"
 
+# Speaker 002 (opcional, se agrega si la env var existe)
+if [ -n "$SPEAKER_002_PASSWORD" ]; then
+  mosquitto_passwd -b "$PASSWD_FILE" spkr-002 "$SPEAKER_002_PASSWORD"
+  USERS_LIST="announcer, spkr-001, spkr-002"
+else
+  USERS_LIST="announcer, spkr-001"
+fi
+
 chmod 0700 "$PASSWD_FILE"
 
-echo "[entrypoint] passwd_file generado con usuarios: announcer, spkr-001"
+echo "[entrypoint] passwd_file generado con usuarios: $USERS_LIST"
 echo "[entrypoint] arrancando Mosquitto..."
 
 exec "$@"
